@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dominion Chess</title>
+    <!-- 1. Include Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 2. Include React libraries -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- 3. Include Babel to translate JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+    <!-- 4. This is where our React app will be rendered -->
+    <div id="root"></div>
+
+    <!-- 5. Your React code goes inside this script tag -->
+    <script type="text/babel">
+      // Note: All your React code is pasted directly here.
+      const { useState, useEffect } = React;
+
+      // Use a self-contained component to avoid complex imports.
+      const Icon = ({ piece, color }) => {
+        const redIcons = {
+          'horseback-king': (
+            <div className="flex flex-col items-center justify-center leading-none -space-y-2">
+              <span className="text-3xl">♚</span>
+              <span className="text-xl">♞</span>
+            </div>
+          ),
+          'disabled-king': '♚',
+          'queen': '♛', 
+          'knight': '♞', 
+          'pawn': '♙',
+          'archer': '➴',
+        };
+        
+        const blueIcons = {
+          'horseback-king': (
+            <div className="flex flex-col items-center justify-center leading-none -space-y-2">
+              <span className="text-3xl">♔</span>
+              <span className="text-xl">♘</span>
+            </div>
+          ),
+          'disabled-king': '♔',
+          'queen': '♕', 
+          'knight': '♘', 
+          'pawn': '♙',
+          'archer': '➴',
+        };
+        
+        const pieceIcon = color === 'red' ? redIcons[piece] : blueIcons[piece];
+        
+        if (!pieceIcon) return null;
+
+        const pieceColor = color === 'red' ? 'text-red-600' : 'text-blue-600';
+        return (
+          <div className={`text-3xl font-bold transition-transform duration-100 ease-out ${pieceColor}`}>
+            {pieceIcon}
+          </div>
+        );
+      };
+
+      const Square = ({ piece, onClick, isSelected, isRedStart, isBlueStart, isGoldenSquare, isLegalMove, isFormationDestination, rankLabel, fileLabel }) => {
+        let bgColor;
+        if (isSelected) {
+          bgColor = 'bg-green-300';
+        } else if (isLegalMove || isFormationDestination) {
+          bgColor = 'bg-green-200';
+        } else if (isGoldenSquare) {
+          bgColor = 'bg-yellow-300';
+        } else if (isRedStart) {
+          bgColor = 'bg-red-400';
+        } else if (isBlueStart) {
+          bgColor = 'bg-blue-400';
+        } else {
+          bgColor = 'bg-white';
+        }
+
+        return (
+          <div
+            onClick={onClick}
+            className={`w-12 h-12 flex items-center justify-center border border-gray-300 rounded-sm cursor-pointer hover:bg-gray-200 relative ${bgColor}`}
+          >
+            {fileLabel && <div className="absolute top-0 left-1 text-xs text-gray-500 font-mono">{fileLabel}</div>}
+            {rankLabel && <div className="absolute bottom-0 right-1 text-xs text-gray-500 font-mono">{rankLabel}</div>}
+            {piece && <Icon piece={piece.type} color={piece.player} />}
+          </div>
+        );
+      };
+
+      // Notes Modal component
+      const NotesModal = ({ isVisible, onClose }) => {
+        if (!isVisible) return null;
+
+        return (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex justify-center items-center z-50">
+            <div className="p-8 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+              <h2 className="text-2xl font-bold mb-4 text-center">Developer Notes</h2>
+              <div className="overflow-y-auto max-h-96 text-sm text-gray-700">
+                <ul className="list-disc list-inside mt-2 space-y-2">
+                  <li>**The Red team pieces are solid emojis**, while **the Blue team pieces are hollow symbols**.</li>
+                  <li>To move a **single pawn**, click it once and then click the destination square.</li>
+                  <li>To move a **pawn formation**, click the first pawn, then click an adjacent pawn to form a line. The destination row will be highlighted. Click a square in that row to move the formation.</li>
+                  <li>**Knights, Horseback King, and an active Queen** can move 1 or 2 squares in any direction.</li>
+                  <li>Archers can only move 1 square. After capturing a piece, the archer will be on cooldown and can only capture, not move. **An archer cannot capture a horseback king or a queen**.</li>
+                  <li>**King Battle Rules**:
+                    <ul>
+                      <li>On the **Horseback King's first move**, the Queen is automatically moved to her team's golden square and remains inactive.</li>
+                      <li>The **Horseback King** can capture and move up to 2 squares. If it is attacked and captured, the attacker is eliminated and the king remains on its square as a **Disabled King**. The disabled king is still movable until the swap.</li>
+                      <li>A **Horseback King** cannot capture another **Horseback King**.</li>
+                      <li>A **Disabled King** can only move 1 square at a time. When it returns to its original starting position, it swaps with the **Queen** (who is on her starting square). The Queen becomes an active **Horseback King**.</li>
+                      <li>The Queen is initially inactive and cannot move. She only becomes active after swapping with the **Disabled King**.</li>
+                    </ul>
+                  </li>
+                  <li>Victory conditions and special King/Queen rules are implemented. A player can win by either eliminating the opponent's king OR by having their own king and queen occupy the two golden squares ($A4$ and $H4$). A player also loses if their timer runs out.</li>
+                </ul>
+              </div>
+              <div className="flex justify-center mt-4">
+                <button
+                  onClick={onClose}
+                  className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg shadow-lg hover:bg-indigo-700 transition-colors duration-200"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      // Help Modal component
+      const HelpModal = ({ isVisible, onClose }) => {
+        if (!isVisible) return null;
+
+        return (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex justify-center items-center z-50">
+            <div className="p-8 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+              <h2 className="text-2xl font-bold mb-4 text-center">How to Play Dominion Chess</h2>
+              <div className="overflow-y-auto max-h-96 text-sm text-gray-700 space-y-4">
+                <p>Dominion Chess is a new take on the classic game, demanding a unique playstyle and new rules. The goal is to either eliminate your opponent's king or occupy both thrones (golden squares) with your king and queen.</p>
+                
+                <div>
+                  <h3 className="font-bold text-lg mb-1">The Royalty</h3>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>
+                      Your **King** is a strong warrior, feared by many. He starts as a **Horseback King** with the ability to move 2 squares in any direction. He is immune to a single fatal capture, and any attacker is eliminated in the process, while he is downgraded to a **Disabled King**.
+                    </li>
+                    <li>
+                      Your **Queen** starts off the game as an inactive piece, as the guardian of your kingdom's throne. A golden square must be occupied by either a King or a Queen at all times.
+                    </li>
+                    <li>
+                      A **Disabled King** can only move one square at a time. To regain his strength, he must retreat to his throne (golden square) and swap places with the Queen. After swapping, the King becomes inactive, and the Queen is activated, able to move like a Horseback King but without his special immunity.
+                    </li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 className="font-bold text-lg mb-1">Other Pieces</h3>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>
+                      **Pawns** move one square in any direction. You can also form a **pawn formation** by selecting a pawn and then clicking an adjacent pawn in the same row. The formation can then move one row forward together, as long as the destination squares are empty.
+                    </li>
+                    <li>
+                      **Knights** move 1 or 2 squares in any direction (not just the "L" shape).
+                    </li>
+                    <li>
+                      **Archers** can move one square in any direction. They can also capture any piece in a straight line (horizontally or vertically), but they cannot capture a horseback king or a queen. After capturing a piece, the archer is on a two-turn cooldown and cannot move or capture.
+                    </li>
+                  </ul>
+                </div>
+                
+                <div>
+                  <h3 className="font-bold text-lg mb-1">Victory Conditions</h3>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>**Elimination**: Capture your opponent's **Disabled King**.</li>
+                    <li>**Dominion**: Get your **Horseback King** and active **Queen** onto your opponent's golden squares.</li>
+                    <li>**Time Out**: Your opponent's time runs out on the clock.</li>
+                  </ul>
+                </div>
+              </div>
+              <div className="flex justify-center mt-4">
+                <button
+                  onClick={onClose}
+                  className="px-6 py-2 bg-green-600 text-white font-bold rounded-lg shadow-lg hover:bg-green-700 transition-colors duration-200"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      // Analysis Modal component
+      const AnalysisModal = ({ isVisible, onClose, analysisText, isLoading }) => {
+        if (!isVisible) return null;
+        return (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex justify-center items-center z-50">
+            <div className="p-8 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+              <h2 className="text-2xl font-bold mb-4 text-center">Game Analysis</h2>
+              <div className="overflow-y-auto max-h-96 text-sm text-gray-700">
+                {isLoading ? (
+                  <div className="flex justify-center items-center h-40">
+                    <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-indigo-500"></div>
+                  </div>
+                ) : (
+                  <p className="whitespace-pre-wrap">{analysisText}</p>
+                )}
+              </div>
+              <div className="flex justify-center mt-4">
+                <button
+                  onClick={onClose}
+                  className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg shadow-lg hover:bg-indigo-700 transition-colors duration-200"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+
+      // Helper function to convert base64 PCM to WAV format
+      function pcmToWav(pcmData, sampleRate) {
+        const pcm16 = new Int16Array(pcmData);
+        const buffer = new ArrayBuffer(44 + pcm16.length * 2);
+        const view = new DataView(buffer);
+
+        function writeString(view, offset, string) {
+          for (let i = 0; i < string.length; i++) {
+            view.setUint8(offset + i, string.charCodeAt(i));
+          }
+        }
+
+        let offset = 0;
+        // RIFF identifier
+        writeString(view, offset, 'RIFF'); offset += 4;
+        // file length
+        view.setUint32(offset, 36 + pcm16.length * 2, true); offset += 4;
+        // RIFF type
+        writeString(view, offset, 'WAVE'); offset += 4;
+        // format chunk identifier
+        writeString(view, offset, 'fmt '); offset += 4;
+        // format chunk length
+        view.setUint32(offset, 16, true); offset += 4;
+        // sample format (1 = PCM)
+        view.setUint16(offset, 1, true); offset += 2;
+        // channel count
+        view.setUint16(offset, 1, true); offset += 2;
+        // sample rate
+        view.setUint32(offset, sampleRate, true); offset += 4;
+        // byte rate (sample rate * block align)
+        view.setUint32(offset, sampleRate * 2, true); offset += 4;
+        // block align (channel count * bytes per sample)
+        view.setUint16(offset, 2, true); offset += 2;
+        // bits per sample
+        view.setUint16(offset, 16, true); offset += 2;
+        // data chunk identifier
+        writeString(view, offset, 'data'); offset += 4;
+        // data chunk length
+        view.setUint32(offset, pcm16.length * 2, true); offset += 4;
+
+        // Write PCM data
+        for (let i = 0; i < pcm16.length; i++) {
+          view.setInt16(offset, pcm16[i], true);
+          offset += 2;
+        }
+
+        return new Blob([view], { type: 'audio/wav' });
+      }
+
+      function base64ToArrayBuffer(base64) {
+        const binaryString = atob(base64);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes.buffer;
+      }
+
+      // Main game component
+      const App = () => {
+        const initialBoard = () => {
+          const board = Array(8).fill(null).map(() => Array(8).fill(null));
+
+          // Player 1 (Red)
+          board[0][0] = { type: 'archer', player: 'red', cooldownTurns: 0 };
+          board[0][1] = { type: 'knight', player: 'red' };
+          board[0][2] = { type: 'knight', player: 'red' };
+          board[0][3] = { type: 'horseback-king', player: 'red', firstMove: true };
+          board[0][4] = { type: 'queen', player: 'red', active: false };
+          for (let i = 0; i < 8; i++) {
+            board[1][i] = { type: 'pawn', player: 'red' };
+          }
+          board[0][5] = { type: 'knight', player: 'red' };
+          board[0][6] = { type: 'knight', player: 'red' };
+          board[0][7] = { type: 'archer', player: 'red', cooldownTurns: 0 };
+
+          // Player 2 (Blue)
+          board[7][0] = { type: 'archer', player: 'blue', cooldownTurns: 0 };
+          board[7][1] = { type: 'knight', player: 'blue' };
+          board[7][2] = { type: 'knight', player: 'blue' };
+          board[7][3] = { type: 'horseback-king', player: 'blue', firstMove: true };
+          board[7][4] = { type: 'queen', player: 'blue', active: false };
+          for (let i = 0; i < 8; i++) {
+            board[6][i] = { type: 'pawn', player: 'blue' };
+          }
+          board[7][5] = { type: 'knight', player: 'blue' };
+          board[7][6] = { type: 'knight', player: 'blue' };
+          board[7][7] = { type: 'archer', player: 'blue', cooldownTurns: 0 };
+
+          return board;
+        };
+
+        // Utility to convert board coordinates to algebraic notation
+        const toAlgebraic = (row, col) => {
+          const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+          const ranks = ['8', '7', '6', '5', '4', '3', '2', '1'];
+          return files[col] + ranks[row];
+        };
+
+        const getPieceNotation = (piece) => {
+          if (!piece) return '';
+          const abbreviations = {
+            'horseback-king': 'K',
+            'disabled-king': 'K',
+            'queen': 'Q',
+            'knight': 'N',
+            'archer': 'A',
+            'pawn': '' // Pawns don't get a letter
+          };
+          return abbreviations[piece.type] || '';
+        };
+        
+        // Game state
+        const [board, setBoard] = useState(initialBoard());
+        const [currentPlayer, setCurrentPlayer] = useState('red');
+        const [selectedPiece, setSelectedPiece] = useState(null);
+        const [validMoves, setValidMoves] = useState([]);
+        const [gameMessage, setGameMessage] = useState('Red player\'s turn.');
+        const [gameOver, setGameOver] = useState(false);
+        const [formationPawns, setFormationPawns] = useState([]);
+        const [formationMoves, setFormationMoves] = useState([]);
+        const [history, setHistory] = useState([]);
+        const [moveLog, setMoveLog] = useState([]);
+
+        // Timer state
+        const initialTime = 300; // 5 minutes in seconds
+        const [redTime, setRedTime] = useState(initialTime);
+        const [blueTime, setBlueTime] = useState(initialTime);
+        const [timerInterval, setTimerInterval] = useState(null);
+        const [showNotesModal, setShowNotesModal] = useState(false);
+        const [showHelpModal, setShowHelpModal] = useState(false);
+        const [hasGameStarted, setHasGameStarted] = useState(false);
+        
+        // Gemini API states
+        const [showAnalysisModal, setShowAnalysisModal] = useState(false);
+        const [analysisText, setAnalysisText] = useState("");
+        const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
+        const [isReadingMove, setIsReadingMove] = useState(false);
+
+        // Timer effect
+        useEffect(() => {
+          if (gameOver || !hasGameStarted) {
+            clearInterval(timerInterval);
+            return;
+          }
+
+          clearInterval(timerInterval);
+          const interval = setInterval(() => {
+            if (currentPlayer === 'red') {
+              setRedTime(prevTime => {
+                if (prevTime <= 1) {
+                  setGameOver(true);
+                  setGameMessage('Time\'s up! Blue wins!');
+                  clearInterval(interval);
+                  return 0;
+                }
+                return prevTime - 1;
+              });
+            } else {
+              setBlueTime(prevTime => {
+                if (prevTime <= 1) {
+                  setGameOver(true);
+                  setGameMessage('Time\'s up! Red wins!');
+                  clearInterval(interval);
+                  return 0;
+                }
+                return prevTime - 1;
+              });
+            }
+          }, 1000);
+          setTimerInterval(interval);
+          
+          return () => clearInterval(interval);
+        }, [currentPlayer, gameOver, hasGameStarted]);
+
+        const formatTime = (time) => {
+          const minutes = Math.floor(time / 60);
+          const seconds = time % 60;
+          return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        };
+
+        const handleTimeChange = (player, delta) => {
+          if (player === 'red') {
+            setRedTime(prevTime => Math.max(0, prevTime + delta * 60));
+          } else {
+            setBlueTime(prevTime => Math.max(0, prevTime + delta * 60));
+          }
+        };
+
+        // Check for win conditions after each move
+        const checkWinCondition = (newBoard) => {
+          // Condition 1: King and Queen on golden squares (corrected coordinates)
+          const redKingOnGolden = newBoard[0][3]?.player === 'red' && newBoard[0][3]?.type.includes('king');
+          const redQueenOnGolden = newBoard[7][3]?.player === 'red' && newBoard[7][3]?.type === 'queen' && newBoard[7][3]?.active;
+          
+          if (redKingOnGolden && redQueenOnGolden) {
+            setGameOver(true);
+            setGameMessage('Red wins by occupying the golden squares!');
+            return true;
+          }
+          
+          const blueKingOnGolden = newBoard[7][3]?.player === 'blue' && newBoard[7][3]?.type.includes('king');
+          const blueQueenOnGolden = newBoard[0][3]?.player === 'blue' && newBoard[0][3]?.type === 'queen' && newBoard[0][3]?.active;
+
+          if (blueKingOnGolden && blueQueenOnGolden) {
+            setGameOver(true);
+            setGameMessage('Blue wins by occupying the golden squares!');
+            return true;
+          }
+          
+          // Condition 2: Check if a disabled king is captured
+          const redDisabledKingExists = newBoard.flat().some(piece => piece && piece.player === 'red' && piece.type === 'disabled-king');
+          const blueDisabledKingExists = newBoard.flat().some(piece => piece && piece.player === 'blue' && piece.type === 'disabled-king');
+
+          // If a player had a disabled king and it is now gone, the other player wins
+          if (history.length > 0) {
+            const lastBoard = history[history.length - 1];
+            const redDisabledKingInLastTurn = lastBoard.flat().some(piece => piece && piece.player === 'red' && piece.type === 'disabled-king');
+            const blueDisabledKingInLastTurn = lastBoard.flat().some(piece => piece && piece.player === 'blue' && piece.type === 'disabled-king');
+
+            if (redDisabledKingInLastTurn && !redDisabledKingExists) {
+              setGameOver(true);
+              setGameMessage('Blue wins by eliminating the disabled Red King!');
+              return true;
+            }
+
+            if (blueDisabledKingInLastTurn && !blueDisabledKingExists) {
+              setGameOver(true);
+              setGameMessage('Red wins by eliminating the disabled Blue King!');
+              return true;
+            }
+          }
+
+          return false;
+        };
+
+        const getPawnValidMoves = (row, col) => {
+          const moves = [];
+          const directions = [
+            [-1, 0], [-1, 1], [0, 1], [1, 1],
+            [1, 0], [1, -1], [0, -1], [-1, -1],
+          ];
+          directions.forEach(([dRow, dCol]) => {
+            const newRow = row + dRow;
+            const newCol = col + dCol;
+            if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
+              // Can move to empty square or capture any piece
+              if (!board[newRow][newCol] || board[newRow][newCol].player !== currentPlayer) {
+                moves.push({ row: newRow, col: newCol, isCapture: !!board[newRow][newCol] });
+              }
+            }
+          });
+          return moves;
+        };
+
+        const getGeneralMoves = (row, col, maxDistance) => {
+          const moves = [];
+          const directions = [
+            [-1, 0], [-1, 1], [0, 1], [1, 1],
+            [1, 0], [1, -1], [0, -1], [-1, -1],
+          ];
+        
+          directions.forEach(([dRow, dCol]) => {
+            for (let i = 1; i <= maxDistance; i++) {
+              const newRow = row + dRow * i;
+              const newCol = col + dCol * i;
+              if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
+                const targetPiece = board[newRow][newCol];
+                if (!targetPiece) {
+                  moves.push({ row: newRow, col: newCol, isCapture: false });
+                } else {
+                  if (targetPiece.player !== currentPlayer) {
+                    moves.push({ row: newRow, col: newCol, isCapture: true });
+                  }
+                  break; 
+                }
+              }
+            }
+          });
+          return moves;
+        };
+        
+        const getKingValidMoves = (row, col) => {
+          const king = board[row][col];
+          const moves = [];
+
+          // Special logic for the swap move if the king is disabled
+          if (king.type === 'disabled-king') {
+              const kingGoldenRow = currentPlayer === 'red' ? 0 : 7;
+              const kingGoldenCol = 3;
+              const targetPiece = board[kingGoldenRow][kingGoldenCol];
+
+              // Check if the queen is at the king's golden square AND the distance is <= 2
+              const distance = Math.max(Math.abs(row - kingGoldenRow), Math.abs(col - kingGoldenCol));
+              
+              if (distance <= 2 && targetPiece && targetPiece.type === 'queen' && !targetPiece.active) {
+                  moves.push({ row: kingGoldenRow, col: kingGoldenCol, isSwap: true });
+              }
+          }
+          
+          // Now get the general moves based on king type
+          let generalMoves = [];
+          if (king.type === 'horseback-king') {
+            generalMoves = getGeneralMoves(row, col, 2);
+          } else if (king.type === 'disabled-king') {
+            generalMoves = getGeneralMoves(row, col, 1);
+          } else {
+            return [];
+          }
+
+          generalMoves.forEach(move => {
+            const targetPiece = board[move.row][move.col];
+            const attackingKing = board[row][col];
+
+            if (targetPiece) {
+              // Can't capture own piece
+              if (targetPiece.player === currentPlayer) {
+                return;
+              }
+
+              // New rules for king attacks
+              if (attackingKing.type === 'horseback-king' && targetPiece.type === 'horseback-king') {
+                return;
+              }
+              
+              // A disabled king cannot attack a horseback king
+              if (attackingKing.type === 'disabled-king' && targetPiece.type === 'horseback-king') {
+                  return;
+              }
+            }
+            
+            moves.push(move);
+          });
+
+          return moves;
+        };
+
+        const getArcherMoves = (row, col) => {
+          const moves = [];
+          const archer = board[row][col];
+
+          // If on cooldown, no moves or captures are possible
+          if (archer.cooldownTurns > 0) {
+            return [];
+          }
+          
+          // Capture targets (only if not on cooldown)
+          const captureDirections = [
+            [-1, 0], [0, 1], [1, 0], [0, -1]
+          ];
+          captureDirections.forEach(([dRow, dCol]) => {
+            let r = row + dRow;
+            let c = col + dCol;
+            while (r >= 0 && r < 8 && c >= 0 && c < 8) {
+              if (board[r][c]) {
+                const targetPiece = board[r][c];
+                if (targetPiece.player !== currentPlayer &&
+                    targetPiece.type !== 'horseback-king' &&
+                    targetPiece.type !== 'queen' &&
+                    (targetPiece.type !== 'disabled-king' || (targetPiece.type === 'disabled-king' && targetPiece.player !== currentPlayer))
+                  ) {
+                  moves.push({ row: r, col: c, isCapture: true });
+                }
+                break; // Blocked by first piece found
+              }
+              r += dRow;
+              c += dCol;
+            }
+          });
+          
+          // Movement (1 square in any direction)
+          const moveDirections = [
+            [-1, 0], [-1, 1], [0, 1], [1, 1],
+            [1, 0], [1, -1], [0, -1], [-1, -1],
+          ];
+          moveDirections.forEach(([dRow, dCol]) => {
+            const newRow = row + dRow;
+            const newCol = col + dCol;
+            if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
+              if (!board[newRow][newCol]) {
+                moves.push({ row: newRow, col: newCol, isCapture: false });
+              }
+            }
+          });
+
+          return moves;
+        };
+
+        const getValidMoves = (row, col) => {
+          if (gameOver) return [];
+          const piece = board[row][col];
+          if (!piece || piece.player !== currentPlayer) {
+            return [];
+          }
+
+          if (piece.type === 'pawn') {
+            return getPawnValidMoves(row, col);
+          } else if (piece.type === 'knight') {
+            return getGeneralMoves(row, col, 2); // Knight can move 1 or 2 squares
+          } else if (piece.type.includes('king')) {
+            return getKingValidMoves(row, col);
+          } else if (piece.type === 'archer') {
+            return getArcherMoves(row, col);
+          } else if (piece.type === 'queen' && (piece.active || piece.gainsAbilitiesOfKing)) {
+            return getGeneralMoves(row, col, 2); // Active queen can move 1 or 2 squares
+          }
+          return [];
+        };
+        
+        // This function is now responsible for handling all state changes related to a turn ending
+        const endTurn = (newBoard) => {
+          // Decrement cooldowns for all archers of the next player
+          const nextPlayer = currentPlayer === 'red' ? 'blue' : 'red';
+          const updatedBoard = newBoard.map(row => 
+            row.map(piece => {
+              if (piece && piece.player === nextPlayer && piece.type === 'archer' && piece.cooldownTurns > 0) {
+                return { ...piece, cooldownTurns: piece.cooldownTurns - 1 };
+              }
+              return piece;
+            })
+          );
+          setBoard(updatedBoard);
+          setCurrentPlayer(nextPlayer);
+          setSelectedPiece(null);
+          setValidMoves([]);
+          setFormationPawns([]);
+          setFormationMoves([]);
+        };
+
+        const handleSquareClick = (row, col) => {
+          if (gameOver) return;
+          
+          if (!hasGameStarted) {
+            setHasGameStarted(true);
+          }
+
+          const targetPiece = board[row][col];
+          
+          // Step 1: Check for a formation move
+          if (formationPawns.length > 0 && formationMoves.some(m => m.row === row && m.col === col)) {
+            setHistory([...history, board]);
+            const newBoard = JSON.parse(JSON.stringify(board));
+            const direction = currentPlayer === 'red' ? 1 : -1;
+            
+            const startCol = formationPawns[0].col;
+            const endCol = formationPawns[formationPawns.length - 1].col;
+            const moveNotation = `${toAlgebraic(formationPawns[0].row, startCol)}=${toAlgebraic(formationPawns[formationPawns.length - 1].row, endCol)}`;
+            
+            formationPawns.forEach(pawn => {
+              const newRow = pawn.row + direction;
+              const newCol = pawn.col;
+              if (newBoard[newRow][newCol] === null) {
+                newBoard[newRow][newCol] = newBoard[pawn.row][pawn.col];
+                newBoard[pawn.row][pawn.col] = null;
+              }
+            });
+            
+            setBoard(newBoard);
+            setMoveLog([...moveLog, { player: currentPlayer, move: moveNotation }]);
+            endTurn(newBoard);
+            checkWinCondition(newBoard);
+            return;
+          }
+          
+          // Step 2: Check for a single piece move
+          if (selectedPiece) {
+            const { row: startRow, col: startCol, piece: startPiece } = selectedPiece;
+            const move = validMoves.find(m => m.row === row && m.col === col);
+            
+            if (move) {
+              setHistory([...history, board]);
+              const newBoard = JSON.parse(JSON.stringify(board));
+              let moveNotation = '';
+              
+              const isArcherCapturing = startPiece.type === 'archer' && move.isCapture;
+
+              if (startPiece.type === 'horseback-king' && startPiece.firstMove) {
+                const queenStartRow = currentPlayer === 'red' ? 0 : 7;
+                const queenStartCol = 4;
+                const kingGoldenSquareRow = startRow;
+                const kingGoldenSquareCol = startCol;
+                
+                const kingPiece = { ...newBoard[startRow][startCol], firstMove: false };
+                const queenPiece = { ...newBoard[queenStartRow][queenStartCol], active: false };
+
+                newBoard[kingGoldenSquareRow][kingGoldenSquareCol] = queenPiece;
+                newBoard[row][col] = kingPiece;
+                newBoard[queenStartRow][queenStartCol] = null;
+
+                setGameMessage(`${currentPlayer}'s queen has moved to their golden square. She is currently inactive.`);
+                moveNotation = `${getPieceNotation(startPiece)}${toAlgebraic(startRow, startCol)}-${toAlgebraic(row, col)} & Q-swap`;
+                
+              } else if (move.isSwap) {
+                const oldKing = { ...newBoard[startRow][startCol] };
+                const oldQueen = { ...newBoard[row][col] };
+
+                newBoard[startRow][startCol] = { ...oldQueen, active: true, gainsAbilitiesOfKing: true };
+                newBoard[row][col] = { ...oldKing, active: false };
+
+                setGameMessage(`${currentPlayer}'s King has returned! The Queen is now an active Horseback King!`);
+                moveNotation = `K-Q swap at ${toAlgebraic(row, col)}`;
+              } else if (isArcherCapturing) {
+                  // Archer captures without moving
+                  newBoard[row][col] = null;
+                  newBoard[startRow][startCol].cooldownTurns = 2; // Apply cooldown
+                  setGameMessage(`${currentPlayer}'s Archer captured a piece! It cannot move or capture for the next 2 turns.`);
+                  moveNotation = `A${toAlgebraic(startRow, startCol)}x${toAlgebraic(row, col)}`;
+              } else {
+                  // Normal move or capture
+                  const isHorsebackKingCapture = targetPiece && targetPiece.type === 'horseback-king' && targetPiece.player !== currentPlayer;
+                  
+                  let pieceNotation = getPieceNotation(startPiece);
+                  const origin = toAlgebraic(startRow, startCol);
+                  const destination = toAlgebraic(row, col);
+                  let action = move.isCapture ? 'x' : '-';
+
+                  if (isHorsebackKingCapture) {
+                      newBoard[row][col] = { ...targetPiece, type: 'disabled-king', active: true }; 
+                      newBoard[startRow][startCol] = null;
+                      setGameMessage(`${currentPlayer}'s piece was eliminated! The Horseback King has been disabled.`);
+                      moveNotation = `${pieceNotation}${origin} captures K at ${destination}`;
+                  } else {
+                      newBoard[row][col] = newBoard[startRow][startCol];
+                      newBoard[startRow][startCol] = null;
+                      setGameMessage(`${currentPlayer} moved from ${origin} to ${destination}.`);
+                      if (startPiece.type === 'pawn' && move.isCapture) {
+                        // Special case for pawns
+                        moveNotation = `${origin}x${destination}`;
+                      } else if (startPiece.type === 'pawn') {
+                        moveNotation = `${origin}-${destination}`;
+                      } else {
+                        moveNotation = `${pieceNotation}${origin}${action}${destination}`;
+                      }
+                  }
+                  
+                  if (startPiece.type === 'archer' && !move.isCapture) {
+                      newBoard[row][col].cooldownTurns = 2;
+                      setGameMessage(`${currentPlayer}'s Archer moved. It cannot move or capture for the next 2 turns.`);
+                  }
+              }
+              
+              setBoard(newBoard);
+              setMoveLog([...moveLog, { player: currentPlayer, move: moveNotation }]);
+              endTurn(newBoard);
+              checkWinCondition(newBoard);
+              return;
+            }
+          }
+          
+          // Step 3: Handle single piece selection and pawn formation start
+          if (targetPiece && targetPiece.player === currentPlayer) {
+            if ((targetPiece.type === 'queen' && !targetPiece.active && !targetPiece.gainsAbilitiesOfKing) || 
+                (targetPiece.type === 'disabled-king' && !targetPiece.active) ||
+                (targetPiece.type === 'archer' && targetPiece.cooldownTurns > 0)) {
+                setGameMessage('This piece is inactive or on cooldown and cannot be moved.');
+                setSelectedPiece(null);
+                setValidMoves([]);
+                setFormationPawns([]);
+                setFormationMoves([]);
+                return;
+            }
+            
+            if (selectedPiece && selectedPiece.piece.type === 'pawn' && targetPiece.type === 'pawn' &&
+                selectedPiece.row === row && Math.abs(selectedPiece.col - col) > 0) {
+              const startCol = selectedPiece.col;
+              const endCol = col;
+              const minCol = Math.min(startCol, endCol);
+              const maxCol = Math.max(startCol, endCol);
+              const direction = currentPlayer === 'red' ? 1 : -1;
+              const aheadRow = row + direction;
+              
+              const newFormation = [];
+              let isValidFormation = true;
+              for (let c = minCol; c <= maxCol; c++) {
+                const piece = board[row][c];
+                if (piece && piece.type === 'pawn' && piece.player === currentPlayer) {
+                  newFormation.push({ row, col: c });
+                } else {
+                  isValidFormation = false;
+                  break;
+                }
+              }
+              
+              if (isValidFormation && newFormation.length > 1) {
+                let allClearAhead = true;
+                const newFormationMoves = [];
+                for (let c = minCol; c <= maxCol; c++) {
+                    if (aheadRow < 0 || aheadRow > 7 || board[aheadRow][c] !== null) {
+                        allClearAhead = false;
+                        break;
+                    }
+                    newFormationMoves.push({ row: aheadRow, col: c });
+                }
+                
+                if (allClearAhead) {
+                    setFormationPawns(newFormation);
+                    setFormationMoves(newFormationMoves);
+                    setSelectedPiece(null);
+                    setValidMoves([]);
+                    setGameMessage(`Pawn formation of ${newFormation.length} selected. Click on the highlighted row to move them.`);
+                    return;
+                }
+              }
+            }
+            
+            setSelectedPiece({ piece: targetPiece, row, col });
+            setValidMoves(getValidMoves(row, col));
+            setFormationPawns([]);
+            setFormationMoves([]);
+            if (targetPiece.type === 'pawn') {
+                setGameMessage('Pawn selected. Click an adjacent pawn to form a line, or a valid square to move.');
+            } else {
+                setGameMessage(`${targetPiece.type} selected. Select a square to move to.`);
+            }
+            return;
+          }
+          
+          // Step 4: Deselect if clicking on an invalid square or the same piece again
+          setSelectedPiece(null);
+          setValidMoves([]);
+          setFormationPawns([]);
+          setFormationMoves([]);
+          setGameMessage('Please select a piece to move.');
+        };
+        
+        const handleUndo = () => {
+          if (history.length > 0) {
+            const lastBoard = history[history.length - 1];
+            const newHistory = history.slice(0, -1);
+            const newMoveLog = moveLog.slice(0, -1);
+            setBoard(lastBoard);
+            setHistory(newHistory);
+            setMoveLog(newMoveLog);
+            setCurrentPlayer(currentPlayer === 'red' ? 'blue' : 'red');
+            setSelectedPiece(null);
+            setValidMoves([]);
+            setFormationPawns([]);
+            setFormationMoves([]);
+            setGameMessage('Move undone.');
+            setGameOver(false);
+          }
+        };
+
+        const resetGame = () => {
+          setBoard(initialBoard());
+          setCurrentPlayer('red');
+          setSelectedPiece(null);
+          setValidMoves([]);
+          setGameMessage('Red player\'s turn.');
+          setGameOver(false);
+          setHistory([]);
+          setMoveLog([]);
+          setRedTime(initialTime);
+          setBlueTime(initialTime);
+          setHasGameStarted(false);
+        };
+        
+        useEffect(() => {
+          if (gameOver) {
+            setGameMessage(prevMessage => prevMessage + ' Game over.');
+          }
+        }, [gameOver]);
+        
+        const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+        const ranks = ['8', '7', '6', '5', '4', '3', '2', '1'];
+
+        // Gemini API functions
+        const handleAnalysis = async () => {
+          if (isLoadingAnalysis) return;
+          setIsLoadingAnalysis(true);
+          setAnalysisText("");
+          setShowAnalysisModal(true);
+
+          try {
+            const prompt = `Analyze the current state of this custom chess game called Dominion Chess based on the following move log: ${JSON.stringify(moveLog)}. The rules of Dominion Chess are: Pawns can move one square in any direction. Knights move 1 or 2 squares in any direction. Archers can capture pieces in a straight line but cannot capture kings or queens, and go on a 2-turn cooldown after a capture. The king starts as a 'horseback-king' which can move 2 squares in any direction and can't be captured by a single piece (the attacker is eliminated and the king becomes a 'disabled-king'). The disabled king moves 1 square and can swap with the inactive queen to reactivate her as a horseback king. A win is achieved by either capturing the disabled king or having the king and an active queen on the opponent's golden squares. The current player is ${currentPlayer}. Provide a concise analysis of the game so far, identify key strategic moments, and suggest a high-level strategy for the current player.`;
+            const chatHistory = [];
+            chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+            const payload = { contents: chatHistory };
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            const response = await fetch(apiUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
+              setAnalysisText(result.candidates[0].content.parts[0].text);
+            } else {
+              setAnalysisText("Sorry, I couldn't generate an analysis at this time.");
+            }
+          } catch (error) {
+            console.error("Error fetching analysis:", error);
+            setAnalysisText("An error occurred while fetching the analysis. Please try again.");
+          } finally {
+            setIsLoadingAnalysis(false);
+          }
+        };
+
+        const handleReadLastMove = async () => {
+          if (moveLog.length === 0 || isReadingMove) {
+            return;
+          }
+          setIsReadingMove(true);
+          const lastMove = moveLog[moveLog.length - 1];
+          const textToSpeak = `${lastMove.player} played: ${lastMove.move}`;
+
+          const prompt = `Say in a clear and cheerful voice: ${textToSpeak}`;
+          const payload = {
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseModalities: ["AUDIO"],
+              speechConfig: {
+                  voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } }
+              }
+            },
+            model: "gemini-2.5-flash-preview-tts"
+          };
+
+          try {
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+            const response = await fetch(apiUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            const part = result?.candidates?.[0]?.content?.parts?.[0];
+            const audioData = part?.inlineData?.data;
+            const mimeType = part?.inlineData?.mimeType;
+
+            if (audioData && mimeType && mimeType.startsWith("audio/")) {
+              const sampleRateMatch = mimeType.match(/rate=(\d+)/);
+              const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 16000;
+              const pcmData = base64ToArrayBuffer(audioData);
+              const wavBlob = pcmToWav(pcmData, sampleRate);
+              const audioUrl = URL.createObjectURL(wavBlob);
+              const audio = new Audio(audioUrl);
+              audio.play();
+              audio.onended = () => {
+                setIsReadingMove(false);
+              };
+            } else {
+              console.error("Unexpected response from TTS API:", result);
+              setIsReadingMove(false);
+            }
+          } catch (error) {
+            console.error("Error fetching audio:", error);
+            setIsReadingMove(false);
+          }
+        };
+
+
+        return (
+          <div className="flex flex-col lg:flex-row items-center lg:items-start justify-center p-4 min-h-screen bg-gray-100 font-sans">
+            <div className="flex flex-col items-center">
+              <h1 className="text-4xl font-bold mb-4 text-gray-800 text-center">Dominion Chess</h1>
+              <div className="flex justify-between items-center w-full max-w-md my-2">
+                  <div className={`p-2 rounded-lg text-white font-bold ${currentPlayer === 'red' ? 'bg-red-600' : 'bg-gray-400'}`}>
+                      <div className="flex items-center space-x-2">
+                          <button onClick={() => handleTimeChange('red', -1)} className="bg-red-700 hover:bg-red-800 text-white p-1 rounded-full text-xs">-1</button>
+                          <span>Red: {formatTime(redTime)}</span>
+                          <button onClick={() => handleTimeChange('red', 1)} className="bg-red-700 hover:bg-red-800 text-white p-1 rounded-full text-xs">+1</button>
+                      </div>
+                  </div>
+                  <div className={`p-2 rounded-lg text-white font-bold ${currentPlayer === 'blue' ? 'bg-blue-600' : 'bg-gray-400'}`}>
+                      <div className="flex items-center space-x-2">
+                          <button onClick={() => handleTimeChange('blue', -1)} className="bg-blue-700 hover:bg-blue-800 text-white p-1 rounded-full text-xs">-1</button>
+                          <span>Blue: {formatTime(blueTime)}</span>
+                          <button onClick={() => handleTimeChange('blue', 1)} className="bg-blue-700 hover:bg-blue-800 text-white p-1 rounded-full text-xs">+1</button>
+                      </div>
+                  </div>
+              </div>
+              <div className="text-xl mb-4 text-center">
+                <span className={`font-bold p-2 rounded-lg ${currentPlayer === 'red' ? 'bg-red-400 text-white' : 'bg-blue-400 text-white'}`}>
+                  {currentPlayer.toUpperCase()}'s Turn
+                </span>
+              </div>
+
+              <div className="flex flex-col items-center p-2 bg-gray-300 rounded-lg shadow-inner">
+                <div className="flex w-full">
+                  <div className="w-12 h-6"></div>
+                  {files.map((file) => (
+                    <div key={file} className="w-12 h-6 text-center text-sm font-bold text-gray-700">{file}</div>
+                  ))}
+                </div>
+
+                <div className="flex">
+                  <div className="flex flex-col justify-between">
+                    {ranks.map((rank) => (
+                      <div key={rank} className="w-6 h-12 flex items-center justify-center text-sm font-bold text-gray-700">{rank}</div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-8">
+                    {board.map((row, rowIndex) =>
+                      row.map((piece, colIndex) => (
+                        <Square
+                          key={`${rowIndex}-${colIndex}`}
+                          piece={piece}
+                          onClick={() => handleSquareClick(rowIndex, colIndex)}
+                          isSelected={
+                            (selectedPiece && selectedPiece.row === rowIndex && selectedPiece.col === colIndex) ||
+                            formationPawns.some(p => p.row === rowIndex && p.col === colIndex)
+                          }
+                          isRedStart={rowIndex === 0 && colIndex === 3}
+                          isBlueStart={rowIndex === 7 && colIndex === 3}
+                          isGoldenSquare={(rowIndex === 0 && colIndex === 3) || (rowIndex === 7 && colIndex === 3)}
+                          isLegalMove={
+                            validMoves.some(m => m.row === rowIndex && m.col === colIndex)
+                          }
+                          isFormationDestination={
+                            formationMoves.some(m => m.row === rowIndex && m.col === colIndex)
+                          }
+                        />
+                      ))
+                    )}
+                  </div>
+                  
+                  <div className="flex flex-col justify-between">
+                    {ranks.map((rank) => (
+                      <div key={rank} className="w-6 h-12 flex items-center justify-center text-sm font-bold text-gray-700">{rank}</div>
+                    ))}
+                  </div>
+                </div>
+                
+                <div className="flex w-full">
+                  <div className="w-12 h-6"></div>
+                  {files.map((file) => (
+                    <div key={file} className="w-12 h-6 text-center text-sm font-bold text-gray-700">{file}</div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 lg:mt-0 lg:ml-8 flex flex-col items-center w-full max-w-sm">
+              <div className="p-4 bg-gray-200 rounded-lg shadow-inner text-center w-full max-w-md">
+                <p className="text-xl font-medium text-gray-700">{gameMessage}</p>
+              </div>
+
+              <div className="mt-6 w-full p-4 bg-white rounded-lg shadow-lg max-h-96 overflow-y-auto">
+                <h2 className="text-xl font-bold mb-2 text-gray-800 text-center">Move Log</h2>
+                <div className="grid grid-cols-2 gap-2 text-sm font-mono">
+                  {moveLog.map((move, index) => (
+                    <div key={index} className={`p-1 rounded-md ${move.player === 'red' ? 'bg-red-100' : 'bg-blue-100'}`}>
+                      {move.player === 'red' ? (
+                        <>
+                          <span className="font-bold mr-1">{Math.floor(index / 2) + 1}.</span>
+                          <span className="text-red-700">{move.move}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="font-bold ml-1">{move.player.toUpperCase()}:</span>
+                          <span className="text-blue-700">{move.move}</span>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="mt-6 flex flex-col space-y-4 w-full justify-center">
+                <div className="flex space-x-4 w-full justify-center">
+                  <button
+                    onClick={() => setShowHelpModal(true)}
+                    className="px-6 py-3 bg-green-500 text-white font-bold rounded-lg shadow-lg hover:bg-green-600 transition-colors duration-200"
+                  >
+                    Help
+                  </button>
+                  <button
+                    onClick={() => setShowNotesModal(true)}
+                    className="px-6 py-3 bg-yellow-500 text-white font-bold rounded-lg shadow-lg hover:bg-yellow-600 transition-colors duration-200"
+                  >
+                    Notes
+                  </button>
+                </div>
+
+                <div className="flex space-x-4 w-full justify-center">
+                  <button
+                    onClick={handleUndo}
+                    disabled={history.length === 0}
+                    className={`px-6 py-3 font-bold rounded-lg shadow-lg transition-colors duration-200
+                      ${history.length > 0 ? 'bg-yellow-500 text-white hover:bg-yellow-600' : 'bg-gray-400 text-gray-600 cursor-not-allowed'}`}
+                  >
+                    Undo
+                  </button>
+                  <button
+                    onClick={resetGame}
+                    className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-lg hover:bg-indigo-700 transition-colors duration-200"
+                  >
+                    Reset Game
+                  </button>
+                </div>
+
+                <div className="flex space-x-4 w-full justify-center mt-4">
+                  <button
+                    onClick={handleAnalysis}
+                    disabled={isLoadingAnalysis}
+                    className="px-6 py-3 bg-purple-500 text-white font-bold rounded-lg shadow-lg hover:bg-purple-600 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    {isLoadingAnalysis ? 'Analyzing...' : '✨ Get Game Analysis'}
+                  </button>
+                  <button
+                    onClick={handleReadLastMove}
+                    disabled={moveLog.length === 0 || isReadingMove}
+                    className="px-6 py-3 bg-orange-500 text-white font-bold rounded-lg shadow-lg hover:bg-orange-600 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    {isReadingMove ? 'Speaking...' : '🔊 Read Last Move'}
+                  </button>
+                </div>
+              </div>
+
+            </div>
+            <NotesModal isVisible={showNotesModal} onClose={() => setShowNotesModal(false)} />
+            <HelpModal isVisible={showHelpModal} onClose={() => setShowHelpModal(false)} />
+            <AnalysisModal
+              isVisible={showAnalysisModal}
+              onClose={() => setShowAnalysisModal(false)}
+              analysisText={analysisText}
+              isLoading={isLoadingAnalysis}
+            />
+          </div>
+        );
+      };
+
+
+      // 6. Render the App component to the root div
+      const container = document.getElementById('root');
+      const root = ReactDOM.createRoot(container);
+      root.render(<App />);
+
+    </script>
+</body>
+</html>
